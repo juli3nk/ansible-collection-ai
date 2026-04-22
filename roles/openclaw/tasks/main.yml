@@ -1,0 +1,155 @@
+---
+- name: Validate OpenClaw role configuration
+  ansible.builtin.assert:
+    that:
+      - openclaw_user | length > 0
+      - openclaw_npm_package | length > 0
+      - openclaw_npm_version | length > 0
+    fail_msg: >-
+      openclaw_user, openclaw_npm_package and openclaw_npm_version must be set
+      to install OpenClaw from npm.
+
+- name: Check OpenClaw user exists
+  become: true
+  ansible.builtin.command: "getent passwd {{ openclaw_user }}"
+  register: openclaw_user_getent
+  changed_when: false
+  failed_when: false
+
+- name: Ensure OpenClaw user is managed by identity role
+  ansible.builtin.assert:
+    that:
+      - openclaw_user_getent.rc == 0
+    fail_msg: >-
+      User '{{ openclaw_user }}' does not exist. Create/manage this user in the
+      identity role before running the openclaw role.
+
+- name: Ensure OpenClaw parent directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ openclaw_npm_prefix }}"
+    state: directory
+    owner: "{{ openclaw_user }}"
+    group: "{{ openclaw_group }}"
+    mode: "0755"
+
+- name: Get npm prefix for OpenClaw user
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - config
+      - get
+      - prefix
+  register: openclaw_current_npm_prefix
+  changed_when: false
+
+- name: Configure npm prefix for OpenClaw user
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - config
+      - set
+      - prefix
+      - "{{ openclaw_npm_prefix }}"
+  when: openclaw_current_npm_prefix.stdout != openclaw_npm_prefix
+
+- name: Ensure OpenClaw npm bin directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ openclaw_npm_bin_dir }}"
+    state: directory
+    owner: "{{ openclaw_user }}"
+    group: "{{ openclaw_group }}"
+    mode: "0755"
+
+- name: Remove OpenClaw from npm as target user
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - uninstall
+      - -g
+      - "{{ openclaw_npm_package }}"
+  register: openclaw_npm_uninstall
+  changed_when: >-
+    ('removed' in ((openclaw_npm_uninstall.stdout ~ openclaw_npm_uninstall.stderr) | lower))
+    or ('up to date' not in ((openclaw_npm_uninstall.stdout ~ openclaw_npm_uninstall.stderr) | lower))
+  failed_when: false
+  environment:
+    NPM_CONFIG_PREFIX: "{{ openclaw_npm_prefix }}"
+  when: openclaw_npm_force_install | bool
+
+- name: Check currently installed OpenClaw npm package version
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - list
+      - -g
+      - --depth=0
+      - "{{ openclaw_npm_package }}"
+  register: openclaw_npm_list
+  changed_when: false
+  failed_when: false
+  environment:
+    NPM_CONFIG_PREFIX: "{{ openclaw_npm_prefix }}"
+
+- name: Install OpenClaw from npm as target user
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - install
+      - -g
+      - "{{ openclaw_npm_package }}@{{ openclaw_npm_version }}"
+  register: openclaw_npm_install
+  changed_when: "'up to date' not in ((openclaw_npm_install.stdout ~ openclaw_npm_install.stderr) | lower)"
+  environment:
+    NPM_CONFIG_PREFIX: "{{ openclaw_npm_prefix }}"
+  when: >-
+    (openclaw_npm_force_install | bool)
+    or (openclaw_npm_list.rc != 0)
+    or (
+      (openclaw_npm_version != 'latest')
+      and ((openclaw_npm_list.stdout ~ openclaw_npm_list.stderr) is not search('@' ~ openclaw_npm_version ~ '(\\s|$)'))
+    )
+
+- name: Enable lingering for openclaw user (allows systemd user services without login)
+  ansible.builtin.command: "loginctl enable-linger {{ openclaw_user }}"
+  changed_when: false
+
+- name: Display configuration note
+  ansible.builtin.debug:
+    msg: |
+      OpenClaw is installed but NOT configured yet.
+
+      Next steps (run as openclaw user):
+      1. Switch user: sudo -u {{ openclaw_user }} -i
+      2. Run onboarding: openclaw onboard --install-daemon
+
+      This will:
+      - Create configuration files (~/.openclaw/openclaw.json)
+      - Guide you through provider setup
+      - Install and start the daemon service automatically

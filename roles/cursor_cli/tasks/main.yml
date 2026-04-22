@@ -1,0 +1,76 @@
+---
+- name: Validate Cursor CLI role configuration
+  ansible.builtin.assert:
+    that:
+      - cursor_cli_user | length > 0
+      - cursor_cli_binary_path | length > 0
+      - cursor_cli_install_script_url | length > 0
+    fail_msg: >-
+      cursor_cli_user, cursor_cli_binary_path and cursor_cli_install_script_url
+      must be set to install Cursor CLI.
+
+- name: Check Cursor CLI user exists
+  become: true
+  ansible.builtin.command: "getent passwd {{ cursor_cli_user }}"
+  register: cursor_cli_user_getent
+  changed_when: false
+  failed_when: false
+
+- name: Ensure Cursor CLI user is managed by identity role
+  ansible.builtin.assert:
+    that:
+      - cursor_cli_user_getent.rc == 0
+    fail_msg: >-
+      User '{{ cursor_cli_user }}' does not exist. Create/manage this user in the
+      identity role before running the cursor-cli role.
+
+- name: Gather installed package facts
+  become: true
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Ensure Cursor CLI prerequisites are installed by system.package role
+  ansible.builtin.assert:
+    that:
+      - (cursor_cli_prerequisite_packages | difference(ansible_facts.packages.keys() | list)) | length == 0
+    fail_msg: >-
+      Missing prerequisite packages for cursor-cli role:
+      {{ cursor_cli_prerequisite_packages | difference(ansible_facts.packages.keys() | list) | join(', ') }}.
+      Install them via the system.package role before running cursor-cli.
+
+- name: Check if Cursor CLI binary is already installed
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ cursor_cli_user }}"
+      - --
+      - test
+      - -x
+      - "{{ cursor_cli_binary_path }}"
+  register: cursor_cli_binary_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Cursor CLI with official installer
+  become: true
+  ansible.builtin.shell: |
+    set -o pipefail
+    runuser -u {{ cursor_cli_user | quote }} -- bash -lc 'curl -fsSL {{ cursor_cli_install_script_url | quote }} | bash'
+  args:
+    executable: /bin/bash
+  when:
+    - cursor_cli_force_install | bool or cursor_cli_binary_check.rc != 0
+
+- name: Verify Cursor CLI is installed
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ cursor_cli_user }}"
+      - --
+      - "{{ cursor_cli_binary_path }}"
+      - --version
+  changed_when: false

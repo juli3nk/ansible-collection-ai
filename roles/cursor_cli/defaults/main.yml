@@ -1,0 +1,13 @@
+---
+cursor_cli_user: openclaw
+
+cursor_cli_binary_path: "/home/{{ cursor_cli_user }}/.local/bin/agent"
+cursor_cli_install_script_url: 'https://cursor.com/install'
+
+# Set to true to force reinstall on each run.
+cursor_cli_force_install: false
+
+# Install dependencies used by the installer script.
+cursor_cli_prerequisite_packages:
+  - ca-certificates
+  - curl

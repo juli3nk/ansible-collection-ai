@@ -1,0 +1,13 @@
+---
+openclaw_user: openclaw
+openclaw_group: "{{ openclaw_user }}"
+openclaw_user_home: "/home/{{ openclaw_user }}"
+
+openclaw_npm_package: openclaw
+openclaw_npm_version: latest
+openclaw_npm_prefix: "{{ openclaw_user_home }}/.npm-global"
+openclaw_npm_bin_dir: "{{ openclaw_npm_prefix }}/bin"
+openclaw_binary_path: "{{ openclaw_npm_bin_dir }}/openclaw"
+
+# Set to true to force reinstall on each run.
+openclaw_npm_force_install: false

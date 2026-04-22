@@ -1,0 +1,20 @@
+galaxy_info:
+  author: Julien K.
+  description: install Cursor CLI as a specific user
+
+  license: MIT
+
+  min_ansible_version: 2.1
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+
+  galaxy_tags:
+    - cursor
+    - cli
+    - ai
+    - agent
+
+dependencies: []
