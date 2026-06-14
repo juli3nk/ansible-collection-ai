@@ -1,0 +1,21 @@
+---
+- name: Remove OpenClaw from npm as target user
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ openclaw_user }}"
+      - --
+      - npm
+      - uninstall
+      - -g
+      - "{{ openclaw_npm_package }}"
+  register: openclaw_npm_uninstall
+  changed_when: >-
+    ('removed' in ((openclaw_npm_uninstall.stdout ~ openclaw_npm_uninstall.stderr) | lower))
+    or ('up to date' not in ((openclaw_npm_uninstall.stdout ~ openclaw_npm_uninstall.stderr) | lower))
+  failed_when: false
+  environment:
+    NPM_CONFIG_PREFIX: "{{ openclaw_npm_prefix }}"
+  when: openclaw_npm_force_install | bool

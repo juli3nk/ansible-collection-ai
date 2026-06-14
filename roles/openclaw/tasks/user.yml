@@ -1,0 +1,15 @@
+---
+- name: Check OpenClaw user exists
+  become: true
+  ansible.builtin.command: "getent passwd {{ openclaw_user }}"
+  register: openclaw_user_getent
+  changed_when: false
+  failed_when: false
+
+- name: Ensure OpenClaw user is managed by identity role
+  ansible.builtin.assert:
+    that:
+      - openclaw_user_getent.rc == 0
+    fail_msg: >-
+      User '{{ openclaw_user }}' does not exist. Create/manage this user in the
+      identity role before running the openclaw role.
