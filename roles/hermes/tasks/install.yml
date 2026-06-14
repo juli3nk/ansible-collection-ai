@@ -1,0 +1,64 @@
+---
+- name: Ensure hermes home directory exists
+  ansible.builtin.file:
+    path: "{{ hermes_home }}"
+    state: directory
+    mode: "0755"
+
+- name: Clone hermes-agent repository
+  ansible.builtin.git:
+    repo: "{{ hermes_repo }}"
+    dest: "{{ install_dir }}"
+    version: "{{ hermes_branch }}"
+    update: true          # idempotent : git pull si déjà cloné
+    force: false          # préserve les modifs locales
+
+# ── 5. Environnement virtuel Python ───────────────────────────────────
+
+- name: Create Python virtual environment with uv
+  ansible.builtin.command: >
+    {{ uv_cmd }} venv
+    --python {{ python_version }}
+    {{ install_dir }}/.venv
+  args:
+    creates: "{{ install_dir }}/.venv/bin/python"
+  environment:
+    UV_NO_CONFIG: "1"
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+
+# ── 6. Installation des dépendances Python ────────────────────────────
+
+- name: Install Python dependencies via uv
+  ansible.builtin.command: >
+    {{ uv_cmd }} pip install -e ".[all]"
+    --python {{ install_dir }}/.venv/bin/python
+  args:
+    chdir: "{{ install_dir }}"
+  environment:
+    UV_NO_CONFIG: "1"
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  register: pip_install
+  changed_when: "'Successfully installed' in pip_install.stdout"
+
+- name: Create hermes symlink
+  ansible.builtin.file:
+    src: "{{ install_dir }}/.venv/bin/hermes"
+    dest: "{{ ansible_env.HOME }}/.local/bin/hermes"
+    state: link
+    force: true
+
+- name: Get hermes version
+  ansible.builtin.command: "{{ hermes_bin }} --version"
+  register: hermes_version
+  changed_when: false
+  become: true
+  become_user: "{{ hermes_user }}"
+  environment:
+    HOME: "{{ hermes_home }}"
+    PATH: "{{ hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+- name: Show installed version
+  ansible.builtin.debug:
+    msg: "hermes-agent {{ hermes_version.stdout | trim }} installed at {{ hermes_bin }}"
